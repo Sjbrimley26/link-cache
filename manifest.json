@@ -1,0 +1,14 @@
+{
+    "name": "Prawn Cache",
+    "version": "1.0.0",
+    "manifest_version": 3,
+    "description": "stores and tags bookmarks for easy viewing",
+    "action": {
+        "default_icon": "./images/icon32.png",
+        "default_title": "Prawn Cache",
+        "default_popup": "./popup.html"
+    },
+    "background": {
+        "service_worker": "./background.js"
+    }
+}
