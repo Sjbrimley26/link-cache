@@ -1,9 +1,3 @@
-/* jshint esversion: 9, worker: true, asi: true */
-
-// https://dev.to/anobjectisa/local-database-and-chrome-extensions-indexeddb-36n
-// https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB
-
-// DB Config - TODO - research multiple tables in IndexedDB - would this be helpful?
 const DB_NAME = "LinkDB"
 const DB_VERSION = 1
 const STORE_NAME = "links"
@@ -12,12 +6,6 @@ const INDICES = [
     { keyPath: "title", config: { unique: false } },
     { keyPath: "tags", config: { unique: false, "multiEntry": true }}
 ] // can optionally give each index a name separate from the keyPath
-
-const testData = {
-    url: `https://dev.to/${Math.random() * 100}`,
-    title: "Blah",
-    tags: ["web design"]
-}
 
 function open_db() {
     return new Promise((resolve, reject) => {
@@ -148,113 +136,35 @@ class IDB {
     }
 }
 
-function search_by_tags (db, tags) {
-    console.time("bad search")
-    const tx = db.transaction(STORE_NAME)
-    const store = tx.objectStore(STORE_NAME)
-    return new Promise((resolve, reject) => {
-        const cursorReq = store.openCursor()
-        const found = []
-        
-        cursorReq.onsuccess = function(e) {
-            const cursor = e.target.result
-            if (cursor) {
-                const item = cursor.value
-                if (item.tags.some(tag => tags.includes(tag))) {
-                    found.push(item)
-                }
-                cursor.continue()
-            } else {
-                console.timeEnd("bad search")
-                resolve(found)
-            }
-        }
+// https://www.sitepoint.com/javascript-shared-web-workers-html5/
+// https://riptutorial.com/javascript/example/15535/dedicated-workers-and-shared-workers
 
-        cursorReq.onerror = function(e) {
-            reject(new Error("error searching by tags"))
-        }
-    })
-}
+let connections = 0
 
-async function index_search (db, tags) {
-    console.time("good search")
-    const store = db.transaction(STORE_NAME).objectStore(STORE_NAME)
-    const index = store.index('tags')
-    const foundArrays = await Promise.all(tags.map(tag => {
-        return new Promise((resolve, reject) => {
-            const found = []
-            const cursorReq = index.openCursor(IDBKeyRange.only(tag))
-            cursorReq.onerror = _ => reject('error opening cursor')
-            cursorReq.onsuccess = e => {
-                const cursor = e.target.result
-                if (cursor) {
-                    found.push(cursor.value)
-                    cursor.continue()
-                } else {
-                    resolve(found)
-                }
-            }
-        })
-    }))
-
-    console.timeEnd("good search")
-    return Array.from(foundArrays.reduce((set, arr) => {
-        arr.forEach(x => set.add(x))
-        return set
-    }, new Set()))
-}
-
-/*
-this is how it would init as a background script
-chrome.runtime.onInstalled.addListener(async _ => {
-    await open_db() // creates the DB when the extension is installed
-})
-*/
-
-
-// init with popup
-(async function() {
+self.addEventListener("connect", async e => {
     const DB = await open_db()
-    chrome.tabs.query({ currentWindow: true, active: true }, async function (tabs) {
-        const title_input = document.getElementById('title')
-        const tags_input = document.getElementById('tags')
-        const url_p = document.getElementById('url')
-        const save = document.getElementById('save')
-        const open = document.getElementById('open_links')
-        const tab = tabs[0]
-        const { url } = tab
-        url_p.innerHTML = url.slice(0, 42)
-        const existingLink = await DB.get(tab.url)
-        if (existingLink) {
-            title_input.value = existingLink.title
-            tags_input.value = existingLink.tags.join(",")
-            save.innerText = 'Update'
-            save.addEventListener('click', async _ => {
-                const tags = tags_input.value.split(",")
-                const title = title_input.value
-                try {
-                    await DB.update(url, { title, tags })
-                } catch (err) {
-                    alert("error adding link", err)
-                }
-                window.close()
-            })
+    const port = e.ports[0]
+    connections++
+
+    port.addEventListener("message", ({ data }) => {
+        const { func, args } = data
+        try {
+            const result = await DB[func](...args)
+            port.postMessage(result)
+        } catch (err) {
+            console.error("error posting back to port", err)
+            port.postMessage(undefined)
         }
-        else {
-            title_input.value = tab.title
-            save.addEventListener('click', async _ => {
-                const tags = tags_input.value.split(",")
-                const title = title_input.value
-                try {
-                    await DB.insert({ url, title, tags })
-                } catch (err) {
-                    alert("error adding link", err)
-                }
-                window.close()
-            })
-        }
-        open.addEventListener('click', _ => {
-            chrome.tabs.create({ url: chrome.extension.getURL('links.html') })
-        })
-      });
-})()
+    }, false)
+
+    port.start()
+}, false)
+
+/**
+ * worker.postMessage({
+ *   func: "get",
+ *   args: ["www.dev.to/1"]
+ * })
+ */
+
+
