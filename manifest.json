@@ -8,7 +8,7 @@
         "default_title": "Prawn Cache",
         "default_popup": "./popup.html"
     },
-    "background": {
-        "service_worker": "./background.js"
-    }
+    "permissions": [
+        "activeTab"
+    ]
 }
