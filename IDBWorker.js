@@ -1,3 +1,5 @@
+/* jshint esversion: 9, worker: true, asi: true */
+
 const DB_NAME = "LinkDB"
 const DB_VERSION = 1
 const STORE_NAME = "links"
@@ -58,11 +60,12 @@ class IDB {
         return new Promise((resolve, reject) => {
             transaction.oncomplete = () => {
                 // console.log(STORE_NAME.slice(0, STORE_NAME.length - 1), "added")
-                resolve(this)
+                resolve(true)
             }
     
             transaction.onerror = e => {
-                reject(new Error("problem inserting item into DB", e.target.error))
+                console.error("problem inserting item into DB", e.target.error)
+                resolve(false)
             }
     
             objectStore.add(data)
@@ -75,7 +78,8 @@ class IDB {
             const req = store.get(key)
     
             req.onerror = () => {
-                reject(new Error("error finding record", url))
+                console.error("error finding record", url)
+                resolve(false)
             }
     
             req.onsuccess = e => {
@@ -83,12 +87,13 @@ class IDB {
                 const updateReq = store.put(item)
                 
                 updateReq.onerror = () => {
-                    reject(new Error("error updating record", key))
+                    console.error("error updating record", key)
+                    resolve(false)
                 }
     
                 updateReq.onsuccess = () => {
                     // console.log(key, "updated")
-                    resolve(this)
+                    resolve(true)
                 }
             }
         })
@@ -98,10 +103,11 @@ class IDB {
         return new Promise((resolve, reject) => {
             const req = this.db.transaction(STORE_NAME).objectStore(STORE_NAME).delete(key)
             req.onsuccess = () => {
-                resolve(this)
+                resolve(true)
             }
             req.onerror = () => {
-                reject(new Error("error deleting record", key))
+                console.error("error deleting record", key)
+                resolve(false)
             }
         })
     }
@@ -127,7 +133,8 @@ class IDB {
         return new Promise((resolve, reject) => {
             var request = objectStore.getAll()
             request.onerror = function() {
-                reject(new Error("error retrieving all values"))
+                console.error("error retrieving all values")
+                resolve(undefined)
             }
             request.onsuccess = function() {
                 resolve(request.result)
@@ -145,8 +152,9 @@ self.addEventListener("connect", async e => {
     const DB = await open_db()
     const port = e.ports[0]
     connections++
+    console.log('port connected')
 
-    port.addEventListener("message", ({ data }) => {
+    port.addEventListener("message", async ({ data }) => {
         const { func, args } = data
         try {
             const result = await DB[func](...args)
@@ -155,10 +163,10 @@ self.addEventListener("connect", async e => {
             console.error("error posting back to port", err)
             port.postMessage(undefined)
         }
-    }, false)
+    })
 
     port.start()
-}, false)
+})
 
 /**
  * worker.postMessage({
