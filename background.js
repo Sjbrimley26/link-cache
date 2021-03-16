@@ -42,7 +42,7 @@ const get = workerRequest('get');
         const open = document.getElementById('open_links')
         const tab = tabs[0]
         const { url } = tab
-        url_p.innerHTML = url.slice(0, 42)
+        url_p.innerHTML = url_p.innerHTML = url.length > 42 ? url.slice(0, 39) + "..." : url
         const existingLink = await get(tab.url)
         if (existingLink) {
             title_input.value = existingLink.title
@@ -52,12 +52,11 @@ const get = workerRequest('get');
                 const tags = tags_input.value.split(",")
                 const title = title_input.value
                 try {
-                    console.log(url, { title, tags })
                     await update(url, { title, tags })
                 } catch (err) {
                     alert("error adding link", err)
                 }
-                // window.close()
+                window.close()
             })
         }
         else {
@@ -70,7 +69,7 @@ const get = workerRequest('get');
                 } catch (err) {
                     alert("error adding link", err)
                 }
-                // window.close()
+                window.close()
             })
         }
         open.addEventListener('click', function() {

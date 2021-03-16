@@ -1,8 +1,9 @@
 /* jshint esversion: 9, worker: true, asi: true */
 
 const DB_NAME = "LinkDB"
-const DB_VERSION = 1
+const DB_VERSION = 2
 const STORE_NAME = "links"
+const TAG_STORE = 'tags'
 const PRIMARY_KEY = "url"
 const INDICES = [
     { keyPath: "title", config: { unique: false } },
@@ -29,7 +30,11 @@ function open_db() {
                     objectStore.transaction.oncomplete = function() {
                         console.log("object store created")
                     }
-                    break;
+                case 1: // PROJECT SPECIFIC
+                    const tagStore = db.createObjectStore(TAG_STORE, { keyPath: 'name' })
+                    tagStore.transaction.oncomplete = function() {
+                        console.log('tag store created');
+                    }
             }
             
         }
@@ -55,8 +60,9 @@ class IDB {
     }
 
     insert(data) {
-        const transaction = this.db.transaction(STORE_NAME, "readwrite")
+        const transaction = this.db.transaction([STORE_NAME, TAG_STORE], "readwrite")
         const objectStore = transaction.objectStore(STORE_NAME)
+        const tStore = transaction.objectStore(TAG_STORE)
         return new Promise((resolve, reject) => {
             transaction.oncomplete = () => {
                 // console.log(STORE_NAME.slice(0, STORE_NAME.length - 1), "added")
@@ -69,11 +75,14 @@ class IDB {
             }
     
             objectStore.add(data)
+            data.tags.forEach(name => tStore.add({ name }))
         })
     }
     
     update(key, updates) {
-        const store = this.db.transaction(STORE_NAME, "readwrite").objectStore(STORE_NAME)
+        const tx = this.db.transaction(STORE_NAME, "readwrite")
+        const store = tx.objectStore(STORE_NAME)
+        const tStore = tx.objectStore(TAG_STORE)
         return new Promise((resolve, reject) => {
             const req = store.get(key)
     
@@ -83,15 +92,19 @@ class IDB {
             }
     
             req.onsuccess = e => {
-                const item = { ...e.target.result, ...updates }
-                const updateReq = store.put(item)
+                const oldItem = e.target.result
+                update.tags.filter(t => !oldItem.tags.includes(t)).forEach(t => tStore.add(t))
+                // 1 issue - new tags are added but old ones aren't removed
+                const item = { ...oldItem, ...updates }
+                store.put(item) // const updateReq = store.put(item)
                 
-                updateReq.onerror = () => {
+                // if I change this from the updateReq to the tx it should work I think
+                tx.onerror = () => {
                     console.error("error updating record", key)
                     resolve(false)
                 }
     
-                updateReq.onsuccess = () => {
+                tx.onsuccess = () => {
                     // console.log(key, "updated")
                     resolve(true)
                 }
@@ -134,10 +147,23 @@ class IDB {
             var request = objectStore.getAll()
             request.onerror = function() {
                 console.error("error retrieving all values")
-                resolve(undefined)
+                resolve([])
             }
             request.onsuccess = function() {
                 resolve(request.result)
+            }
+        })
+    }
+
+    get_tags() { // PROJECT SPECIFIC
+        return new Promise((resolve, reject) => {
+            const req = this.db.transaction(TAG_STORE).objectStore(TAG_STORE).getAll()
+            req.onerror = function() {
+                console.error('error getting tags')
+                resolve([])
+            }
+            req.onsuccess = function() {
+                resolve(req.result) //.map(t => t.name)
             }
         })
     }
